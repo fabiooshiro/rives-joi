@@ -1,11 +1,45 @@
-import React, { useRef } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, TouchableOpacity, Text, StyleSheet, PanResponder, NativeTouchEvent, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+const { width: pageWidth, height: pageHeight } = Dimensions.get('window');
+
+function hit(x: number, y: number, oX: number, oY: number, oW: number, oH: number) {
+  return x > oX && x < oX + oW && y > oY && y < oY + oH;
+}
+
+function isButtonPressed(e: { pageX: number, pageY: number }, btn: { left: number, top: number, width: number, height: number }) {
+  return hit(e.pageX, e.pageY, btn.left, btn.top, btn.width, btn.height)
+}
+
 export default function App() {
-  const cartridgeUrl = "https://release.eitri.calindra.com.br/build/organizations/cf5660ee-bf90-42cd-9a43-9d2c69ee3c89/applications/749d6f6f-f10f-4448-b36e-9c484b1293b8/eitri-apps/eitri-test-1716469363549/0.1.0/main.sqfs"
+  // https://emulator.rives.io/#simple=true&cartridge=https://raw.githubusercontent.com/edubart/cartridges/main/gamepad.sqfs
+  // const cartridgeUrl = "https://release.eitri.calindra.com.br/build/organizations/cf5660ee-bf90-42cd-9a43-9d2c69ee3c89/applications/749d6f6f-f10f-4448-b36e-9c484b1293b8/eitri-apps/eitri-test-1716469363549/0.1.0/main.sqfs"
+  const cartridgeUrl = "https://raw.githubusercontent.com/edubart/cartridges/main/gamepad.sqfs"
   const emulatorUrl = "https://emulator.rives.io/#simple=true&cartridge="
   const webviewRef = useRef(null);
+  const [pressed, setPressed] = useState<Record<string, boolean>>({})
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: (event, _gestureState) => {
+        updateTouches(event.nativeEvent.touches);
+      },
+      onPanResponderMove: (event, _gestureState) => {
+        updateTouches(event.nativeEvent.touches);
+      },
+      // onPanResponderEnd: (event, _gestureState) => {
+      //   updateTouches(event.nativeEvent.touches);
+      // },
+      onPanResponderRelease: (_event, _gestureState) => {
+        stopMove();
+      },
+      onPanResponderTerminate: (_event, _gestureState) => {
+        stopMove();
+      },
+    })
+  ).current;
 
   const injectJs = (run: string) => {
     if (webviewRef.current) {
@@ -20,6 +54,14 @@ export default function App() {
       keyCode: 65, // Deprecated, but still widely used
       charCode: 97, // Deprecated, but still widely used
       which: 65, // Deprecated, but still widely used
+      bubbles: true
+    },
+    "d": {
+      key: 'd',
+      code: 'KeyD',
+      keyCode: 68, // Deprecated, but still widely used
+      charCode: 100, // Deprecated, but still widely used
+      which: 68, // Deprecated, but still widely used
       bubbles: true
     },
     "s": {
@@ -63,9 +105,15 @@ export default function App() {
       bubbles: true
     }
   };
-  
+
 
   const handleButtonPressIn = (key: string) => {
+    if (pressed[key]) {
+      return;
+    }
+    pressed[key] = true
+    console.log('Pressed', key)
+    setPressed({ ...pressed })
     const k = KEY_MAP[key]
     injectJs(`
       // Create a new keyboard event
@@ -73,12 +121,18 @@ export default function App() {
 
       // Dispatch the event to the target element
       document.dispatchEvent(event);
-      document.body.style.backgroundColor = "rgb(255,0,"+Math.floor((Math.random()*255))+")";
+      document.body.style.backgroundColor = "rgb(100,100,"+Math.floor((Math.random()*255))+")";
       true;
     `);
   };
 
   const handleButtonPressOut = (key: string) => {
+    if (!pressed[key]) {
+      return;
+    }
+    console.log('Released', key)
+    pressed[key] = false
+    setPressed({ ...pressed })
     const k = KEY_MAP[key]
     injectJs(`
       // Create a new keyboard event
@@ -86,84 +140,157 @@ export default function App() {
 
       // Dispatch the event to the target element
       document.dispatchEvent(event);
-      document.body.style.backgroundColor = "rgb(255,0,"+Math.floor((Math.random()*255))+")";
+      document.body.style.backgroundColor = "rgb(100,100,100)";
       true;
     `);
   };
 
+  const stopMove = () => {
+    handleButtonPressOut('ArrowRight')
+    handleButtonPressOut('ArrowLeft')
+    handleButtonPressOut('ArrowDown')
+    handleButtonPressOut('ArrowUp')
+    handleButtonPressOut('a')
+    handleButtonPressOut('s')
+    handleButtonPressOut('d')
+  }
+
+  const updateTouches = (touches: NativeTouchEvent[]) => {
+    const pressed: Record<string, boolean> = {
+      s: false,
+      a: false,
+      d: false,
+      ArrowRight: false,
+      ArrowLeft: false,
+      ArrowDown: false,
+      ArrowUp: false,
+    }
+    touches.forEach((e) => {
+      if (isButtonPressed(e, styles.buttonS)) {
+        pressed["s"] = true
+      } else if (isButtonPressed(e, styles.buttonA)) {
+        pressed["a"] = true
+      } else if (isButtonPressed(e, styles.buttonD)) {
+        pressed["d"] = true
+      }
+      if (isButtonPressed(e, styles.joystickUp)) {
+        pressed["ArrowUp"] = true
+      } else if (isButtonPressed(e, styles.joystickDown)) {
+        pressed["ArrowDown"] = true
+      }
+      if (isButtonPressed(e, styles.joystickLeft)) {
+        pressed["ArrowLeft"] = true
+      } else if (isButtonPressed(e, styles.joystickRight)) {
+        pressed["ArrowRight"] = true
+      }
+    })
+    for (const k in pressed) {
+      if (pressed[k]) {
+        // console.log("-pressed", k)
+        handleButtonPressIn(k)
+      } else {
+        // console.log("-released", k)
+        handleButtonPressOut(k)
+      }
+    }
+    // const updatedTouches = touches.map(touch => ({
+    //   id: touch.identifier,
+    //   x: touch.pageX,
+    //   y: touch.locationY
+    // }));
+    // console.log(updatedTouches.length)
+  };
+
   return (
-    <View style={{ flex: 1 }}>
-      <WebView
-        ref={webviewRef}
-        source={{
-          uri: `${emulatorUrl}${cartridgeUrl}`,
-        }}
-        style={{ flex: 1 }}
-      />
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          onPressIn={() => handleButtonPressIn("a")}
-          onPressOut={() => handleButtonPressOut("a")}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>A</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPressIn={() => handleButtonPressIn("s")}
-          onPressOut={() => handleButtonPressOut("s")}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>S</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPressIn={() => handleButtonPressIn("ArrowUp")}
-          onPressOut={() => handleButtonPressOut("ArrowUp")}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Up</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPressIn={() => handleButtonPressIn("ArrowDown")}
-          onPressOut={() => handleButtonPressOut("ArrowDown")}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Down</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPressIn={() => handleButtonPressIn("ArrowLeft")}
-          onPressOut={() => handleButtonPressOut("ArrowLeft")}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Left</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPressIn={() => handleButtonPressIn("ArrowRight")}
-          onPressOut={() => handleButtonPressOut("ArrowRight")}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Right</Text>
-        </TouchableOpacity>
+    <>
+      <View style={{ flex: 1, paddingTop: 40 }} {...panResponder.panHandlers}>
+        <WebView
+          ref={webviewRef}
+          source={{
+            uri: `${emulatorUrl}${cartridgeUrl}`,
+          }}
+          style={{ flex: 1 }}
+        />
+        <View style={styles.joystickUp}></View>
+        <View style={styles.joystickDown}></View>
+        <View style={styles.joystickLeft}></View>
+        <View style={styles.joystickRight}></View>
+        <View style={styles.buttonA}><Text style={styles.buttonText}>A</Text></View>
+        <View style={styles.buttonS}><Text style={styles.buttonText}>S</Text></View>
+        <View style={styles.buttonD}><Text style={styles.buttonText}>D</Text></View>
       </View>
-    </View>
+    </>
   );
 };
 
+const PCT_ARROW = 0.36
+const PADDING_BOTTOM = 25
+
 const styles = StyleSheet.create({
-  buttonContainer: {
+  joystickUp: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    zIndex: 1,
+    width: 150,
+    height: Math.floor(150 * PCT_ARROW),
+    left: pageWidth - 150 - 20,
+    top: pageHeight - 150 - PADDING_BOTTOM,
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 2,
   },
-  button: {
-    backgroundColor: '#007BFF',
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
+  joystickDown: {
+    position: 'absolute',
+    width: 150,
+    height: Math.floor(150 * PCT_ARROW),
+    left: pageWidth - 150 - 20,
+    top: pageHeight - 150 - PADDING_BOTTOM + (150 - Math.floor(150 * PCT_ARROW)),
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 2,
+  },
+  joystickLeft: {
+    position: 'absolute',
+    width: Math.floor(150 * PCT_ARROW),
+    height: 150,
+    left: pageWidth - 150 - 20,
+    top: pageHeight - 150 - PADDING_BOTTOM,
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 2,
+  },
+  joystickRight: {
+    position: 'absolute',
+    width: Math.floor(150 * PCT_ARROW),
+    height: 150,
+    left: pageWidth - 150 - 20 + (150 - Math.floor(150 * PCT_ARROW)),
+    top: pageHeight - 150 - PADDING_BOTTOM,
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 2,
   },
   buttonText: {
-    color: '#FFF',
-    fontSize: 16,
+    color: "white",
+  },
+  buttonA: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
+    left: 20,
+    top: pageHeight - 105 - PADDING_BOTTOM,
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 3,
+  },
+  buttonS: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
+    left: 20,
+    top: pageHeight - 50 - PADDING_BOTTOM,
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 3,
+  },
+  buttonD: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
+    left: 20,
+    top: pageHeight - 160 - PADDING_BOTTOM,
+    backgroundColor: 'rgba(255,100,100,0.4)',
+    zIndex: 3,
   },
 });
