@@ -2,8 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { setStatusBarHidden } from 'expo-status-bar';
-import { setBehaviorAsync, setVisibilityAsync } from 'expo-navigation-bar';
+import { StatusBar, setStatusBarHidden } from 'expo-status-bar';
 
 const { width: pageWidth, height: pageHeight } = Dimensions.get('window');
 
@@ -11,11 +10,11 @@ export default function App() {
   async function changeScreenOrientation() {
     await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     setStatusBarHidden(true)
-    setVisibilityAsync('hidden')
-    setBehaviorAsync('inset-swipe');
+    
   }
   useEffect(() => {
     changeScreenOrientation()
+
   }, [])
   return (
     <>
